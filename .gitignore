@@ -1,3 +1,8 @@
 dumps/
 env/
 test.py
+__pycache__/
+auxillary_scripts/
+compressed_graph.pkl
+raw_graph.pkl
+translate_output.py
