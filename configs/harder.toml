@@ -1,11 +1,19 @@
-[compression]
-path_raw_graph="raw_graph.pkl"
+#compression/decompression
 svd_treshold=120
 spectral_eigs=60
 kmeans_klusters=3500
-window_size=15
+window_size=12
 
-[pagerank]
-path_compressed_graph="compressed_graph.pkl"
+#pagerank
 iterations=20
 damping=0.85
+
+#paths
+path_compressed_graph="compressed_graph.pkl"
+path_raw_graph="raw_graph.pkl"
+path_pages="dumps/pages"
+path_linktargets="dumps/linktargets"
+path_links="dumps/links"
+
+#output
+winners_displayed=50
