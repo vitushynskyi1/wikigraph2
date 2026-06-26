@@ -1,9 +1,17 @@
 import pickle
 import numpy as np
 import sys
-import config
+from translate_output import translate_output
+from config import get_params
+from config import change_config
 
-def iter_decode_rows(compressed_rows, window_size=7):
+if len(sys.argv) > 1:
+    change_config(sys.argv[1])
+
+window_size, path_compressed_hraph, iterations, damping = get_params(
+        "window_size", "path_compressed_graph", "iterations", "damping")
+
+def iter_decode_rows(compressed_rows, window_size = window_size):
     """
     Generator that yields fully reconstructed rows sequentially.
     Manages its own sliding window cache internally.
@@ -52,7 +60,10 @@ def iter_decode_rows(compressed_rows, window_size=7):
             window_cache.pop(0)
 
 
-def rank_pagerank(path_compressed_graph, iterations, damping):
+def rank_pagerank(path_compressed_graph = path_compressed_hraph, 
+                  iterations = iterations, 
+                  damping = damping,
+                  window_size = window_size):
     print("Loading graph metadata...")
     with open(path_compressed_graph, "rb") as f:
         data = pickle.load(f)
@@ -65,12 +76,8 @@ def rank_pagerank(path_compressed_graph, iterations, damping):
 
     pr_current = np.ones(N) / N
     pr_next = np.zeros(N)
-    
-    # We can fetch the window_size from the config system if needed, 
-    # but defaulting to 7 covers our basic.toml configuration natively.
-    window_size = config.get_compress_params().get("window_size", 7)
 
-    print(f"Beginning {iterations} iterations of Streaming PageRank...")
+    print(f"Beginning {iterations} iterations of PageRank...")
     for it in range(iterations):
         pr_next.fill(0.0)
         
@@ -87,20 +94,10 @@ def rank_pagerank(path_compressed_graph, iterations, damping):
         
         pr_current = base_score + (damping * pr_next)
         
-        print(f"  Iteration {it + 1}/{iterations} completed.")
+        print(f"Iteration {it + 1}/{iterations} completed.")
 
     print("\nPageRank calculation finished!")
-    
-    top_10_new_idx = np.argsort(pr_current)[::-1][:10]
-    
-    print("\n--- TOP 10 WIKIPEDIA PAGE IDs ---")
-    for rank, new_idx in enumerate(top_10_new_idx):
-        score = pr_current[new_idx]
-        old_idx = new_to_old[new_idx]
-        real_page_id = idx_to_node[old_idx]
-        print(f"#{rank + 1}: Page ID {real_page_id} (Score: {score:.6f})")
+    translate_output(pr_current)
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        config.change_config(sys.argv[1])
-    rank_pagerank(**config.get_pagerank_params())
+        rank_pagerank()

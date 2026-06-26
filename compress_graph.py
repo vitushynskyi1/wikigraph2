@@ -2,8 +2,15 @@ import pickle
 import numpy as np
 import scipy.sparse.linalg as spla
 from sklearn.cluster import KMeans
-import config
 import sys
+from config import get_params
+from config import change_config
+
+if len(sys.argv) > 1:
+    change_config(sys.argv[1])
+
+path_raw_graph, svd_treshold, spectral_eigs, kmeans_klusters, window_size = get_params(
+        "path_raw_graph", "svd_treshold", "spectral_eigs", "kmeans_klusters", "window_size")
 
 class _VVT_Operator(spla.LinearOperator):
     """Linear operator used to perform implicit iteration of Lanczos alghoritm,
@@ -15,13 +22,15 @@ class _VVT_Operator(spla.LinearOperator):
     def _matvec(self, x):
         return self.V @ (self.V.T @ x)
 
-def compress_graph(path_raw_graph, svd_treshold, 
-                   spectral_eigs, kmeans_klusters, window_size):
+def compress_graph(path_raw_graph = path_raw_graph, 
+                   svd_treshold = svd_treshold, 
+                   spectral_eigs = spectral_eigs,
+                   kmeans_klusters = kmeans_klusters, 
+                   window_size = window_size):
     print("Loading raw graph from disk...")
     with open(path_raw_graph, "rb") as f:
         data = pickle.load(f)
         A = data["matrix"]
-        node_to_idx = data["node_to_idx"]
         
     N = A.shape[0]
 
@@ -58,6 +67,9 @@ def compress_graph(path_raw_graph, svd_treshold,
     print("Applying Diff-Based Reference Encoding...")
     compressed_rows = []
     window_cache = [] 
+
+    references_count = 0
+    reference_choosen = False
     
     for i in range(N):
         row_links = A_T_ordered.indices[A_T_ordered.indptr[i]:A_T_ordered.indptr[i+1]]
@@ -86,6 +98,7 @@ def compress_graph(path_raw_graph, svd_treshold,
 
             if cost_ref < best_cost:
                 best_cost = cost_ref
+                reference_choosen = True
                 best_encoding = {
                     "ref_offset": offset,
                     "add_first": add_first,
@@ -93,6 +106,7 @@ def compress_graph(path_raw_graph, svd_treshold,
                     "remove": [int(r) for r in to_remove]
                 }
 
+        if reference_choosen: reference_count = reference_count + 1
         compressed_rows.append(best_encoding)
 
         window_cache.append(row_links)
@@ -118,6 +132,4 @@ def compress_graph(path_raw_graph, svd_treshold,
     print("Compression Complete!")
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        config.change_config(sys.argv[1])
-    compress_graph(**config.get_compress_params())
+    compress_graph()

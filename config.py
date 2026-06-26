@@ -6,16 +6,15 @@ CONFIG = "basic.toml"
 def _current_config_dir():
     return Path(__file__).resolve().parent / "configs" / CONFIG
 
-def _get_default_params(section):
+def get_config():
     with open(_current_config_dir(), "rb") as f:
         config = tomllib.load(f)
-        return config[section]
+        return config
 
-def get_compress_params():
-    return _get_default_params("compression")
+def get_params(*request): 
+    config = get_config()
+    return (config[key] for key in request)
 
-def get_pagerank_params():
-    return _get_default_params("pagerank")
 
 def change_config(new):
     global CONFIG
