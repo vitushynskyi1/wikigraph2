@@ -1,28 +1,56 @@
 import pickle
 import numpy as np
+import sys
+import config
 
-def decode_row(i, compressed_rows, decompressed_cache):
-    """Reconstructs the target links using Reference & Delta decoding."""
-    row_data = compressed_rows[i]
-    
-    # 1. Reference Decoding (Copy from referenced row)
-    if row_data.get("ref_offset", 0) > 0:
-        return decompressed_cache[i - row_data["ref_offset"]]
-    
-    # 2. Delta Decoding (Reconstruct absolute indices from integer gaps)
-    first = row_data["first"]
-    if first == -1:
-        links = []
-    else:
-        deltas = row_data["deltas"]
-        links = [first]
-        current = first
-        for d in deltas:
-            current += d
-            links.append(current)
-            
-    decompressed_cache[i] = links
-    return links
+def iter_decode_rows(compressed_rows, window_size=7):
+    """
+    Generator that yields fully reconstructed rows sequentially.
+    Manages its own sliding window cache internally.
+    """
+    window_cache = []
+
+    for i, row_data in enumerate(compressed_rows):
+        ref_offset = row_data.get("ref_offset", 0)
+
+        if ref_offset > 0:
+            prev_links = window_cache[-ref_offset]
+            links_set = set(prev_links)
+
+            #remove instructions
+            for r in row_data.get("remove", []):
+                links_set.discard(r)
+
+            #add instructions
+            add_first = row_data.get("add_first", -1)
+            if add_first != -1:
+                links_set.add(add_first)
+                curr = add_first
+                for d in row_data.get("add_deltas", []):
+                    curr += d
+                    links_set.add(curr)
+
+            links = sorted(list(links_set))
+
+        else: #reference encoding wasn't applied
+            first = row_data.get("first", -1)
+            if first == -1:
+                links = []
+            else:
+                deltas = row_data.get("deltas", [])
+                links = [first]
+                curr = first
+                for d in deltas:
+                    curr += d
+                    links.append(curr)
+
+        yield i, links
+
+        #sliding window cache update
+        window_cache.append(links)
+        if len(window_cache) > window_size:
+            window_cache.pop(0)
+
 
 def rank_pagerank(path_compressed_graph, iterations, damping):
     print("Loading graph metadata...")
@@ -35,33 +63,26 @@ def rank_pagerank(path_compressed_graph, iterations, damping):
     new_to_old = data["new_to_old"]
     idx_to_node = data["idx_to_node"]
 
-    # Initialize PageRank arrays in cache
     pr_current = np.ones(N) / N
     pr_next = np.zeros(N)
     
-    # Cache for reference decoding (only need to remember referenced window)
-    decompressed_cache = {}
+    # We can fetch the window_size from the config system if needed, 
+    # but defaulting to 7 covers our basic.toml configuration natively.
+    window_size = config.get_compress_params().get("window_size", 7)
 
     print(f"Beginning {iterations} iterations of Streaming PageRank...")
     for it in range(iterations):
         pr_next.fill(0.0)
         
-        # Iterate over the graph, decoding one row at a time
-        for i in range(N):
-            in_links = decode_row(i, compressed_rows, decompressed_cache)
+        for i, in_links in iter_decode_rows(compressed_rows, window_size):
             
-            # PULL PageRank calculation
             score = 0.0
             for j in in_links:
                 score += pr_current[j] / out_degrees[j]
                 
             pr_next[i] = score
-            
-            if i >= 7 and (i - 7) in decompressed_cache:
-                del decompressed_cache[i - 7]
 
-        # Apply damping factor and account for dangling nodes
-        dangling_sum = np.sum(pr_current[out_degrees == 1.0]) #0's were padded by 1's in the first phase
+        dangling_sum = np.sum(pr_current[out_degrees == 1.0]) 
         base_score = (1.0 - damping) / N + damping * (dangling_sum / N)
         
         pr_current = base_score + (damping * pr_next)
@@ -78,9 +99,6 @@ def rank_pagerank(path_compressed_graph, iterations, damping):
         old_idx = new_to_old[new_idx]
         real_page_id = idx_to_node[old_idx]
         print(f"#{rank + 1}: Page ID {real_page_id} (Score: {score:.6f})")
-
-import sys
-import config
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

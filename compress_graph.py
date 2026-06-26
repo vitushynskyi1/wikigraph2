@@ -2,6 +2,8 @@ import pickle
 import numpy as np
 import scipy.sparse.linalg as spla
 from sklearn.cluster import KMeans
+import config
+import sys
 
 class _VVT_Operator(spla.LinearOperator):
     """Linear operator used to perform implicit iteration of Lanczos alghoritm,
@@ -13,9 +15,8 @@ class _VVT_Operator(spla.LinearOperator):
     def _matvec(self, x):
         return self.V @ (self.V.T @ x)
 
-
 def compress_graph(path_raw_graph, svd_treshold, 
-                    spectral_eigs, kmeans_klusters, window_size):
+                   spectral_eigs, kmeans_klusters, window_size):
     print("Loading raw graph from disk...")
     with open(path_raw_graph, "rb") as f:
         data = pickle.load(f)
@@ -53,38 +54,48 @@ def compress_graph(path_raw_graph, svd_treshold,
     A_T_ordered = A_T[new_order, :]      
     A_T_ordered = A_T_ordered[:, new_order]  
 
-    # --- DELTA & REFERENCE COMPRESSION ---
-    print("Applying Delta and Reference Encoding...")
+    # --- REFERENCE COMPRESSION ---
+    print("Applying Diff-Based Reference Encoding...")
     compressed_rows = []
-    
-    # Stores tuples of (first_val, deltas) for the last W rows
     window_cache = [] 
     
     for i in range(N):
         row_links = A_T_ordered.indices[A_T_ordered.indptr[i]:A_T_ordered.indptr[i+1]]
         row_links = np.sort(row_links)
 
-        deltas = np.diff(row_links).tolist() if len(row_links) > 0 else []
-        first_val = row_links[0] if len(row_links) > 0 else -1
+        raw_deltas = np.diff(row_links).tolist() if len(row_links) > 0 else []
+        raw_first = int(row_links[0]) if len(row_links) > 0 else -1
+        
+        best_cost = 1 + len(raw_deltas) 
+        best_encoding = {
+            "ref_offset": 0,
+            "first": raw_first,
+            "deltas": [int(d) for d in raw_deltas]
+        }
 
-        #Comparing current row to previous window_size rows 
-        matched_offset = 0
-        for offset_idx, (prev_first, prev_deltas) in enumerate(reversed(window_cache)):
-            if first_val == prev_first and deltas == prev_deltas:
-                matched_offset = offset_idx + 1
-                break
+        for offset_idx, prev_links in enumerate(reversed(window_cache)):
+            offset = offset_idx + 1
 
-        if matched_offset > 0:
-            compressed_rows.append({"ref_offset": matched_offset})
-        else:
-            compressed_rows.append({
-                "ref_offset": 0,
-                "first": int(first_val),
-                "deltas": [int(d) for d in deltas]
-            })
+            to_add = np.setdiff1d(row_links, prev_links)
+            to_remove = np.setdiff1d(prev_links, row_links)
 
-        # Update the sliding window cache
-        window_cache.append((first_val, deltas))
+            add_deltas = np.diff(to_add).tolist() if len(to_add) > 0 else []
+            add_first = int(to_add[0]) if len(to_add) > 0 else -1
+
+            cost_ref = 1 + len(add_deltas) + len(to_remove)
+
+            if cost_ref < best_cost:
+                best_cost = cost_ref
+                best_encoding = {
+                    "ref_offset": offset,
+                    "add_first": add_first,
+                    "add_deltas": [int(d) for d in add_deltas],
+                    "remove": [int(r) for r in to_remove]
+                }
+
+        compressed_rows.append(best_encoding)
+
+        window_cache.append(row_links)
         if len(window_cache) > window_size:
             window_cache.pop(0)
 
@@ -105,9 +116,6 @@ def compress_graph(path_raw_graph, svd_treshold,
         }, f)
         
     print("Compression Complete!")
-
-import config
-import sys
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

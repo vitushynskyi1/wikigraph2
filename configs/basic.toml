@@ -1,11 +1,13 @@
 [compression]
-path_raw_graph="raw_graph.pkl"
 svd_treshold=100
 spectral_eigs=50
 kmeans_klusters=1000
-window_size=7
 
 [pagerank]
-path_compressed_graph="compressed_graph.pkl"
 iterations=20
 damping=0.85
+
+[global]
+path_compressed_graph="compressed_graph.pkl"
+path_raw_graph="raw_graph.pkl"
+window_size=7
