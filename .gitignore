@@ -1,5 +1,6 @@
 env/
 test.py
+dumps/
 __pycache__/
 dumps/
 auxillary_scripts/
