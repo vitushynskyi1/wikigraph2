@@ -1,7 +1,5 @@
-dumps/
 env/
 test.py
 __pycache__/
+dumps/
 auxillary_scripts/
-compressed_graph.pkl
-raw_graph.pkl
