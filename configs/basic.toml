@@ -14,6 +14,7 @@ path_raw_graph="raw_graph.pkl"
 path_pages="dumps/pages"
 path_linktargets="dumps/linktargets"
 path_links="dumps/links"
+path_metadata="graph_metadata.pkl"
 
 #output
 winners_displayed=50
